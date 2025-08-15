@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import QRCode from 'qrcode.react';
 import { signOut } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../firebase/config';
@@ -17,10 +18,13 @@ interface TicketsPageProps {
 }
 
 const TicketsPage: React.FC<TicketsPageProps> = ({ user }) => {
-  const [tickets, setTickets] = useState<number>(5); // Quantidade inicial de tickets
+  const [tickets, setTickets] = useState<number>(5);
   const [transacoes, setTransacoes] = useState<Transacao[]>([
     { id: 1, tipo: 'ganho', quantidade: 5, descricao: 'Tickets iniciais', data: new Date() },
   ]);
+
+  const [valorVenda, setValorVenda] = useState<number>(0);
+  const [qrData, setQrData] = useState<string | null>(null);
 
   const handleLogout = async (): Promise<void> => {
     try {
@@ -44,7 +48,7 @@ const TicketsPage: React.FC<TicketsPageProps> = ({ user }) => {
     if (tipo === 'ganho') {
       setTickets(tickets + quantidade);
     } else {
-      setTickets(Math.max(0, tickets - quantidade)); // Não permitir tickets negativos
+      setTickets(Math.max(0, tickets - quantidade));
     }
   };
 
@@ -55,87 +59,107 @@ const TicketsPage: React.FC<TicketsPageProps> = ({ user }) => {
     return 'Usuário';
   };
 
-  const formatarData = (data: Date): string => {
-    return data.toLocaleDateString('pt-BR');
+  const gerarQrCode = () => {
+    if (valorVenda <= 0) return;
+    // Aqui geramos os dados do QR (pode ser só JSON com vendedor e valor)
+    const payload = JSON.stringify({
+      vendedor: getMatricula(),
+      valor: valorVenda
+    });
+    setQrData(payload);
   };
 
-  const formatarHora = (data: Date): string => {
-    return data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  };
+  const formatarData = (data: Date): string => data.toLocaleDateString('pt-BR');
+  const formatarHora = (data: Date): string => data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="tickets-page">
-      <div className="tickets-container">
-        <header className="tickets-header">
-          <div className="user-info">
-            <User size={24} />
-            <div>
-              <h2>Olá, {getMatricula()}</h2>
-              <p>Feira Cotemig</p>
-            </div>
-          </div>
-          <button onClick={handleLogout} className="logout-button">
-            <LogOut size={20} />
-          </button>
-        </header>
-
-        <div className="tickets-balance">
-          <div className="balance-card">
-            <Ticket size={40} className="balance-icon" />
-            <div className="balance-info">
-              <h3>Seus Tickets</h3>
-              <span className="balance-amount">{tickets}</span>
-            </div>
+      <header className="tickets-header">
+        <div className="user-info">
+          <User size={24} />
+          <div>
+            <h2>Olá, {getMatricula()}</h2>
+            <p>Feira Cotemig</p>
           </div>
         </div>
+        <button onClick={handleLogout} className="logout-button">
+          <LogOut size={20} />
+        </button>
+      </header>
 
-        <div className="quick-actions">
-          <button 
-            className="action-button gain"
-            onClick={() => adicionarTransacao('ganho', 1, 'Ticket recebido')}
-          >
-            <Plus size={20} />
-            Receber
-          </button>
-          <button 
-            className="action-button spend"
-            onClick={() => adicionarTransacao('gasto', 1, 'Ticket usado')}
-            disabled={tickets <= 0}
-          >
-            <Minus size={20} />
-            Usar
-          </button>
-        </div>
-
-        <div className="transactions-section">
-          <div className="section-header">
-            <h3>Histórico de Transações</h3>
-            <RefreshCw size={18} />
+      <div className="tickets-balance">
+        <div className="balance-card">
+          <Ticket size={40} className="balance-icon" />
+          <div className="balance-info">
+            <h3>Seus Tickets</h3>
+            <span className="balance-amount">{tickets}</span>
           </div>
-          
-          <div className="transactions-list">
-            {transacoes.length === 0 ? (
-              <div className="empty-state">
-                <Ticket size={48} />
-                <p>Nenhuma transação ainda</p>
-              </div>
-            ) : (
-              transacoes.map((transacao) => (
-                <div key={transacao.id} className={`transaction-item ${transacao.tipo}`}>
-                  <div className="transaction-icon">
-                    {transacao.tipo === 'ganho' ? <Plus size={16} /> : <Minus size={16} />}
-                  </div>
-                  <div className="transaction-details">
-                    <h4>{transacao.descricao}</h4>
-                    <p>{formatarData(transacao.data)} às {formatarHora(transacao.data)}</p>
-                  </div>
-                  <div className={`transaction-amount ${transacao.tipo}`}>
-                    {transacao.tipo === 'ganho' ? '+' : '-'}{transacao.quantidade}
-                  </div>
+        </div>
+      </div>
+
+      <div className="quick-actions">
+        <button 
+          className="action-button gain"
+          onClick={() => adicionarTransacao('ganho', 1, 'Ticket recebido')}
+        >
+          <Plus size={20} /> Receber
+        </button>
+        <button 
+          className="action-button spend"
+          onClick={() => adicionarTransacao('gasto', 1, 'Ticket usado')}
+          disabled={tickets <= 0}
+        >
+          <Minus size={20} /> Usar
+        </button>
+      </div>
+
+      {/* Formulário para gerar QR Code */}
+      <div className="qr-section">
+        <h3>Gerar QR para venda</h3>
+        <input
+          type="number"
+          value={valorVenda}
+          onChange={(e) => setValorVenda(parseInt(e.target.value))}
+          placeholder="Digite o valor"
+        />
+        <button onClick={gerarQrCode}>Gerar QR Code</button>
+
+        {qrData && (
+          <div style={{ marginTop: '20px' }}>
+            <QRCode value={qrData} size={180} />
+            <p>Mostre este QR para o comprador</p>
+          </div>
+        )}
+      </div>
+
+      {/* Histórico */}
+      <div className="transactions-section">
+        <div className="section-header">
+          <h3>Histórico de Transações</h3>
+          <RefreshCw size={18} />
+        </div>
+        <div className="transactions-list">
+          {transacoes.length === 0 ? (
+            <div className="empty-state">
+              <Ticket size={48} />
+              <p>Nenhuma transação ainda</p>
+            </div>
+          ) : (
+            transacoes.map((transacao) => (
+              <div key={transacao.id} className={`transaction-item ${transacao.tipo}`}>
+                <div className="transaction-icon">
+                  {transacao.tipo === 'ganho' ? <Plus size={16} /> : <Minus size={16} />}
                 </div>
-              ))
-            )}
-          </div>
+                <div className="transaction-details">
+                  <h4>{transacao.descricao}</h4>
+                  <p>{formatarData(transacao.data)} às {formatarHora(transacao.data)}</p>
+                </div>
+                <div className={`transaction-amount ${transacao.tipo}`}>
+                  {transacao.tipo === 'ganho' ? '+' : '-'}{transacao.quantidade}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
